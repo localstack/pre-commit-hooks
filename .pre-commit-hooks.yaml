@@ -1,0 +1,6 @@
+- id: upgrade-deps-if-changed
+  name: check if the pinned dependencies need to be upgraded
+  entry: upgrade-deps
+  language: python
+  files: setup.cfg
+  additional_dependencies: [packaging, toml]

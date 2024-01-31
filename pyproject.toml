@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "localstack-pre-commit"
+authors = [
+    { name = "LocalStack Maintainers", email = "info@localstack.cloud" }
+]
+dynamic = ["version"]
+description = "Pre-commit hooks for LocalStack repositories"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "packaging",
+    "toml"
+]
+
+[project.scripts]
+upgrade-deps = "localstack_pre_commit.upgrade_deps:main"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+include = ["localstack_pre_commit"]
+
+[tool.setuptools.dynamic]
+version = { attr = "localstack_pre_commit.__version__"}
+
