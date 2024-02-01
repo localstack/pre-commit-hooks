@@ -14,6 +14,15 @@ class InvalidRequirement(Exception):
     pass
 
 
+def print_error_msg(e: InvalidRequirement, extra: str = None):
+    error_msg = "Due to changes in the {} you need to run `make upgrade-all-reqs`"
+    if extra is None:
+        print(error_msg.format("base requirements"))
+    else:
+        print(error_msg.format(f"extra '{extra}'"))
+    print(f"Violation: {e}")
+
+
 def get_lock_file_from_extra(extra: str) -> str:
     return f"requirements-{extra}.txt"
 
@@ -95,35 +104,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     setup_cfg = ConfigParser()
     setup_cfg.read("setup.cfg")
 
-    # First check if the base requirements still fulfil the setup.cfg
+    # get the base requirements
     base_deps = parse_requirements_from_cfg(setup_cfg["options"]["install_requires"])
-    # Assume that there is always lock file for an extra named "test"
-    parsed_lock_file = parse_requirements_from_lockfile("requirements-test.txt")
-    try:
-        validate_requirements(parsed_lock_file, base_deps)
-    except InvalidRequirement as e:
-        print(
-            "Due to changes in the base requirements "
-            "you need to run `make upgrade-all-reqs`"
-        )
-        print(f"Violation: {e}")
-        return 1
-
-    # Then check if all the extras still fulfil the setup.cfg
+    # get the list of extras
     cfg_extras = get_cfg_extras(setup_cfg)
     for extra in cfg_extras:
+        # get the requirements for each extra
         extra_deps = parse_requirements_from_cfg(
             setup_cfg["options.extras_require"][extra])
         lock_file = get_lock_file_from_extra(extra)
         parsed_lock_file = parse_requirements_from_lockfile(lock_file)
         try:
+            validate_requirements(parsed_lock_file, base_deps)
+        except InvalidRequirement as e:
+            print_error_msg(e)
+            return 1
+        try:
             validate_requirements(parsed_lock_file, extra_deps)
         except InvalidRequirement as e:
-            print(
-                f"Due to changes in the extra '{extra}' "
-                f"you need to run `make upgrade-all-reqs`"
-            )
-            print(f"Violation: {e}")
+            print_error_msg(e, extra)
             return 1
 
     return 0
