@@ -15,7 +15,7 @@ class InvalidRequirement(Exception):
 
 
 def print_error_msg(e: InvalidRequirement, extra: str = None):
-    error_msg = "Due to changes in the {} you need to run `make upgrade-all-reqs`"
+    error_msg = "Due to changes in the {} you need to run `make upgrade-pinned-dependencies`"
     if extra is None:
         print(error_msg.format("base requirements"))
     else:
@@ -30,8 +30,12 @@ def get_lock_file_from_extra(extra: str) -> str:
 @functools.cache
 def get_unsafe_packages() -> list[str]:
     pyproject_toml = toml.load("pyproject.toml")
-    unsafe = pyproject_toml["tool"]["pip-tools"]["unsafe-package"]
-    return unsafe
+    pip_tools = pyproject_toml.get("tool", {}).get("pip-tools", {})
+    if "unsafe-package" in pip_tools:
+        return pip_tools["unsafe-package"]
+    else:
+        # if there is no unsafe-package key, return the default defined by pip-tools
+        return ["pip", "setuptools", "distribute"]
 
 
 def get_cfg_extras(cfg: ConfigParser) -> Sequence[str]:

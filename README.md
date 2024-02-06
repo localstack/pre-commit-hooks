@@ -17,9 +17,9 @@ Then, to use hooks from this repo add this to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/localstack/pre-commit-hooks
-    rev: v0.1.0
+    rev: v0.2.0
     hooks:
-      - id: upgrade-deps-if-changed
+      - id: check-pinned-deps-for-needed-upgrade
 ```
 
 ### Testing
@@ -31,7 +31,7 @@ pre-commit run <hook-id> --files $(git diff --name-only --cached)
 
 ## Available Hooks
 
-- `upgrade-deps-if-changed`: This hook will notify contributors if the `setup.cfg` file has changed and the pinned dependencies do not satisfy the `setup.cfg` file. 
+- `check-pinned-deps-for-needed-upgrade`: This hook will notify contributors if the `setup.cfg` file has changed and the pinned dependencies do not satisfy the `setup.cfg` file. 
 
 ## Adding new Hooks
 

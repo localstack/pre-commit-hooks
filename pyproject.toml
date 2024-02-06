@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-upgrade-deps = "localstack_pre_commit.upgrade_deps:main"
+check-pinned-deps = "localstack_pre_commit.check_pinned_deps:main"
 
 [tool.setuptools]
 include-package-data = false
