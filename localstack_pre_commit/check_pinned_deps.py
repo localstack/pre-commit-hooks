@@ -70,15 +70,24 @@ def validate_requirements(lock_file_reqs: dict[str, Requirement],
                 f"{lock_file_reqs[req_name]} does not fulfil {req}")
 
 
+def parse_requirement(line: str) -> Requirement | None:
+    # remove trailing comments
+    line = line.split("#")[0]
+    line = line.strip()
+    if line.startswith("#") or line.startswith("%") or not line:
+        # ignore comments and references to other extras
+        return None
+    req = Requirement(line)
+    req.name = canonicalize_name(req.name)
+    return req
+
+
 def parse_requirements_from_cfg(cfg_deps: str) -> dict[str, Requirement]:
     requirements = {}
     for line in cfg_deps.splitlines():
-        line = line.strip()
-        if line.startswith("#") or line.startswith("%") or not line:
-            # ignore comments and references to other extras
+        req = parse_requirement(line)
+        if req is None:
             continue
-        req = Requirement(line)
-        req.name = canonicalize_name(req.name)
         requirements[req.name] = req
     return requirements
 
@@ -87,12 +96,9 @@ def parse_requirements_from_lockfile(lockfile: str) -> dict[str, Requirement]:
     requirements = {}
     with open(lockfile, "r") as f:
         for line in f:
-            line = line.strip()
-            if line.startswith("#") or line.startswith("%") or not line:
-                # ignore comments and references to other extras
+            req = parse_requirement(line)
+            if req is None:
                 continue
-            req = Requirement(line)
-            req.name = canonicalize_name(req.name)
             requirements[req.name] = req
     return requirements
 
