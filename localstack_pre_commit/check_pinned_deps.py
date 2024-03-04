@@ -14,6 +14,80 @@ class InvalidRequirement(Exception):
     pass
 
 
+def parse_requirement(line: str, ignore_list: list[str] = None) -> Requirement | None:
+    if ignore_list is None:
+        # ignore comments
+        ignore_list = ["#"]
+
+    # remove trailing comments
+    line = line.split("#")[0]
+    line = line.strip()
+    if not line or any(line.startswith(ignore) for ignore in ignore_list):
+        # ignore empty lines and elements in the ignore list
+        return None
+    req = Requirement(line)
+    req.name = canonicalize_name(req.name)
+    return req
+
+
+def parse_requirements(lines: Sequence, ignore_list: list[str] = None) -> dict[
+    str, Requirement]:
+    requirements = {}
+    for line in lines:
+        req = parse_requirement(line, ignore_list)
+        if req is None:
+            continue
+        requirements[req.name] = req
+    return requirements
+
+
+class ProjectDefinition:
+    def get_defined_extras(self) -> Sequence[str]:
+        raise NotImplementedError()
+
+    def get_base_requirements(self) -> dict[str, Requirement]:
+        raise NotImplementedError()
+
+    def get_extra_requirements(self, extra: str) -> dict[str, Requirement]:
+        raise NotImplementedError()
+
+
+class PyProjectDefinition:
+    pyproject: dict
+
+    def __init__(self, pyproject_path: str = "pyproject.toml"):
+        self.pyproject = toml.load(pyproject_path)
+
+    def get_defined_extras(self) -> Sequence[str]:
+        return list(self.pyproject["project"]["optional-dependencies"].keys())
+
+    def get_base_requirements(self) -> dict[str, Requirement]:
+        return parse_requirements(self.pyproject["project"]["dependencies"])
+
+    def get_extra_requirements(self, extra: str) -> dict[str, Requirement]:
+        return parse_requirements(
+            self.pyproject["project"]["optional-dependencies"][extra],
+            ignore_list=["#", self.pyproject["project"]["name"]])
+
+
+class SetupCfgDefinition(ProjectDefinition):
+    def __init__(self, setup_cfg_path: str = "setup.cfg"):
+        self.setup_cfg = ConfigParser()
+        self.setup_cfg.read(setup_cfg_path)
+
+    def get_defined_extras(self) -> Sequence[str]:
+        return list(self.setup_cfg["options.extras_require"].keys())
+
+    def get_base_requirements(self) -> dict[str, Requirement]:
+        return parse_requirements(
+            self.setup_cfg["options"]["install_requires"].splitlines())
+
+    def get_extra_requirements(self, extra: str) -> dict[str, Requirement]:
+        return parse_requirements(
+            self.setup_cfg["options.extras_require"][extra].splitlines(),
+            ignore_list=["#", "%"])
+
+
 def print_error_msg(e: InvalidRequirement, extra: str = None):
     error_msg = "Due to changes in the {} you need to run `make upgrade-pinned-dependencies`"
     if extra is None:
@@ -70,19 +144,7 @@ def validate_requirements(lock_file_reqs: dict[str, Requirement],
                 f"{lock_file_reqs[req_name]} does not fulfil {req}")
 
 
-def parse_requirement(line: str) -> Requirement | None:
-    # remove trailing comments
-    line = line.split("#")[0]
-    line = line.strip()
-    if line.startswith("#") or line.startswith("%") or not line:
-        # ignore comments and references to other extras
-        return None
-    req = Requirement(line)
-    req.name = canonicalize_name(req.name)
-    return req
-
-
-def parse_requirements_from_cfg(cfg_deps: str) -> dict[str, Requirement]:
+def parse_requirements_from_project_def(cfg_deps: str) -> dict[str, Requirement]:
     requirements = {}
     for line in cfg_deps.splitlines():
         req = parse_requirement(line)
@@ -108,20 +170,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("filenames", nargs="*", help="Filenames to check.")
     args = parser.parse_args(argv)
 
-    if "setup.cfg" not in args.filenames:
+    if "setup.cfg" not in args.filenames and "pyproject.toml" not in args.filenames:
         return 0
+
+    pyproject = toml.load("pyproject.toml")
+
+    if "project" in pyproject:
+        project_def = PyProjectDefinition()
+    elif "setup.cfg" not in args.filenames:
+        return 0
+    else:
+        project_def = SetupCfgDefinition()
 
     setup_cfg = ConfigParser()
     setup_cfg.read("setup.cfg")
 
     # get the base requirements
-    base_deps = parse_requirements_from_cfg(setup_cfg["options"]["install_requires"])
+    base_deps = project_def.get_base_requirements()
     # get the list of extras
-    cfg_extras = get_cfg_extras(setup_cfg)
-    for extra in cfg_extras:
+    extras = project_def.get_defined_extras()
+    for extra in extras:
         # get the requirements for each extra
-        extra_deps = parse_requirements_from_cfg(
-            setup_cfg["options.extras_require"][extra])
+        extra_deps = project_def.get_extra_requirements(extra)
         lock_file = get_lock_file_from_extra(extra)
         parsed_lock_file = parse_requirements_from_lockfile(lock_file)
         try:

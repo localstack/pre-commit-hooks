@@ -2,5 +2,4 @@
   name: check if the pinned dependencies need to be upgraded
   entry: check-pinned-deps
   language: python
-  files: setup.cfg
   additional_dependencies: [packaging, toml]

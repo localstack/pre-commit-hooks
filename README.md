@@ -17,7 +17,7 @@ Then, to use hooks from this repo add this to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/localstack/pre-commit-hooks
-    rev: v0.2.0
+    rev: v1.0.0
     hooks:
       - id: check-pinned-deps-for-needed-upgrade
 ```
@@ -31,7 +31,9 @@ pre-commit run <hook-id> --files $(git diff --name-only --cached)
 
 ## Available Hooks
 
-- `check-pinned-deps-for-needed-upgrade`: This hook will notify contributors if the `setup.cfg` file has changed and the pinned dependencies do not satisfy the `setup.cfg` file. 
+- `check-pinned-deps-for-needed-upgrade`: This hook will notify contributors if the project file has changed and the pinned dependencies do not satisfy the project file. 
+The project file can either be `pyproject.toml` or `setup.cfg`.
+If the `pyproject.toml` file contains a `project` section, the hook will check the `pyproject.toml` file, otherwise it will check the `setup.cfg` file.
 
 ## Adding new Hooks
 
