@@ -5,6 +5,7 @@
 #
 
 import argparse
+import importlib
 import importlib.machinery
 import importlib.util
 import sys
@@ -18,6 +19,9 @@ SCHEMA_FILES = ("localstack/spec.py", "localstack_ext/spec.py")
 
 
 def load_spec_dict(file: str) -> dict:
+    importlib.import_module('localstack')
+    importlib.import_module('localstack_ext')
+
     # Attempt to load given file as a Python module
     loader = importlib.machinery.SourceFileLoader('module', file)
     loader_spec = importlib.util.spec_from_loader('module', loader)

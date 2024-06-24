@@ -8,4 +8,4 @@
   name: ensure LocalStack OpenAPI specification is valid
   entry: validate-openapi-spec
   language: python
-  additional_dependencies: [localstack, localstack_ext, openapi_spec_validator]
+  additional_dependencies: [openapi_spec_validator]
