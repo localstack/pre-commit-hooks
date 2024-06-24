@@ -13,7 +13,8 @@ from typing import Sequence
 import openapi_spec_validator
 
 
-SCHEMA_FILES = ("localstack/schema.py", "localstack_ext/schema.py")
+# Files that define the OpenAPI spec in a variable named `OPENAPI`
+SCHEMA_FILES = ("localstack/spec.py", "localstack_ext/spec.py")
 
 
 def load_spec_dict(file: str) -> dict:
@@ -28,7 +29,7 @@ def load_spec_dict(file: str) -> dict:
 
 
 def validate(spec: dict) -> int:
-    # Validate dict against OAS 3.1
+    # Validate spec dict against OAS 3.1
     result = openapi_spec_validator.OpenAPIV31SpecValidator(spec).iter_errors()
 
     err_count = 0
@@ -44,8 +45,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("filenames", nargs="*", help="Filenames to check.")
     args = parser.parse_args(argv)
 
-    for file in args.filenames:  # file being analysed
-        for schema_file in SCHEMA_FILES:  # files known to contain OAS spec
+    for file in args.filenames:
+        for schema_file in SCHEMA_FILES:
             if file.endswith(schema_file):
                 spec = load_spec_dict(file)
                 if validate(spec) != 0:
