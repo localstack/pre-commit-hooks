@@ -3,3 +3,9 @@
   entry: check-pinned-deps
   language: python
   additional_dependencies: [packaging, toml]
+
+- id: validate-localstack-openapi-spec
+  name: ensure LocalStack OpenAPI specification is valid
+  entry: validate-openapi-spec
+  language: python
+  additional_dependencies: [openapi_spec_validator]
