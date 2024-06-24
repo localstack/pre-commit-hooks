@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 check-pinned-deps = "localstack_pre_commit.check_pinned_deps:main"
+validate-openapi-spec = "localstack_pre_commit.validate_openapi_spec:main"
 
 [tool.setuptools]
 include-package-data = false
