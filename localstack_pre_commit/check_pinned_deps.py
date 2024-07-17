@@ -184,10 +184,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     setup_cfg_files = [
-        file for file in args.filenames if fnmatch.fnmatch(file, SETUP_CFG_PATTERN)
+        file
+        for file in args.filenames
+        if fnmatch.fnmatch(file, SETUP_CFG_PATTERN) or file == "setup.cfg"
     ]
     pyproject_files = [
-        file for file in args.filenames if fnmatch.fnmatch(file, PYPROJECT_PATTERN)
+        file
+        for file in args.filenames
+        if fnmatch.fnmatch(file, PYPROJECT_PATTERN) or file == "pyproject.toml"
     ]
 
     if not setup_cfg_files and not pyproject_files:
