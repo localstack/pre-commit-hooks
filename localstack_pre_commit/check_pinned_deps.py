@@ -2,12 +2,17 @@
 
 import argparse
 import functools
+import fnmatch
 from configparser import ConfigParser
 from typing import Sequence
 
 import toml
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
+from pathlib import Path
+
+PYPROJECT_PATTERN = "**/pyproject.toml"
+SETUP_CFG_PATTERN = "**/setup.cfg"
 
 
 class InvalidRequirement(Exception):
@@ -30,8 +35,9 @@ def parse_requirement(line: str, ignore_list: list[str] = None) -> Requirement |
     return req
 
 
-def parse_requirements(lines: Sequence, ignore_list: list[str] = None) -> dict[
-    str, Requirement]:
+def parse_requirements(
+    lines: Sequence, ignore_list: list[str] = None
+) -> dict[str, Requirement]:
     requirements = {}
     for line in lines:
         req = parse_requirement(line, ignore_list)
@@ -67,7 +73,8 @@ class PyProjectDefinition:
     def get_extra_requirements(self, extra: str) -> dict[str, Requirement]:
         return parse_requirements(
             self.pyproject["project"]["optional-dependencies"][extra],
-            ignore_list=["#", self.pyproject["project"]["name"]])
+            ignore_list=["#", self.pyproject["project"]["name"]],
+        )
 
 
 class SetupCfgDefinition(ProjectDefinition):
@@ -80,16 +87,20 @@ class SetupCfgDefinition(ProjectDefinition):
 
     def get_base_requirements(self) -> dict[str, Requirement]:
         return parse_requirements(
-            self.setup_cfg["options"]["install_requires"].splitlines())
+            self.setup_cfg["options"]["install_requires"].splitlines()
+        )
 
     def get_extra_requirements(self, extra: str) -> dict[str, Requirement]:
         return parse_requirements(
             self.setup_cfg["options.extras_require"][extra].splitlines(),
-            ignore_list=["#", "%"])
+            ignore_list=["#", "%"],
+        )
 
 
 def print_error_msg(e: InvalidRequirement, extra: str = None):
-    error_msg = "Due to changes in the {} you need to run `make upgrade-pinned-dependencies`"
+    error_msg = (
+        "Due to changes in the {} you need to run `make upgrade-pinned-dependencies`"
+    )
     if extra is None:
         print(error_msg.format("base requirements"))
     else:
@@ -97,13 +108,13 @@ def print_error_msg(e: InvalidRequirement, extra: str = None):
     print(f"Violation: {e}")
 
 
-def get_lock_file_from_extra(extra: str) -> str:
-    return f"requirements-{extra}.txt"
+def get_lock_file_from_extra(extra: str, base_path: str = "") -> str:
+    return f"{base_path}requirements-{extra}.txt"
 
 
 @functools.cache
 def get_unsafe_packages() -> list[str]:
-    pyproject_toml = toml.load("pyproject.toml")
+    pyproject_toml = toml.load(next(Path().glob(PYPROJECT_PATTERN)))
     pip_tools = pyproject_toml.get("tool", {}).get("pip-tools", {})
     if "unsafe-package" in pip_tools:
         return pip_tools["unsafe-package"]
@@ -116,8 +127,9 @@ def get_cfg_extras(cfg: ConfigParser) -> Sequence[str]:
     return list(cfg["options.extras_require"].keys())
 
 
-def validate_requirements(lock_file_reqs: dict[str, Requirement],
-                          cfg_reqs: dict[str, Requirement]):
+def validate_requirements(
+    lock_file_reqs: dict[str, Requirement], cfg_reqs: dict[str, Requirement]
+):
     # the packages which should not be locked
     unsafe_packages = get_unsafe_packages()
     for req_name, req in cfg_reqs.items():
@@ -141,7 +153,8 @@ def validate_requirements(lock_file_reqs: dict[str, Requirement],
         # We need to allow pre-releases because of aws_cdk alpha dependencies.
         if not valid_range.contains(actual_version, prereleases=True):
             raise InvalidRequirement(
-                f"{lock_file_reqs[req_name]} does not fulfil {req}")
+                f"{lock_file_reqs[req_name]} does not fulfil {req}"
+            )
 
 
 def parse_requirements_from_project_def(cfg_deps: str) -> dict[str, Requirement]:
@@ -170,20 +183,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("filenames", nargs="*", help="Filenames to check.")
     args = parser.parse_args(argv)
 
-    if "setup.cfg" not in args.filenames and "pyproject.toml" not in args.filenames:
+    setup_cfg_files = [
+        file for file in args.filenames if fnmatch.fnmatch(file, SETUP_CFG_PATTERN)
+    ]
+    pyproject_files = [
+        file for file in args.filenames if fnmatch.fnmatch(file, PYPROJECT_PATTERN)
+    ]
+
+    if not setup_cfg_files and not pyproject_files:
+        # No changes in any files that can define dependencies
         return 0
 
-    pyproject = toml.load("pyproject.toml")
+    # get pyproject file irrespective of it being changed
+    pyproject = toml.load(next(Path().glob(PYPROJECT_PATTERN)))
 
+    # check if dependencies are defined in pyproject or setup.cfg
     if "project" in pyproject:
-        project_def = PyProjectDefinition()
-    elif "setup.cfg" not in args.filenames:
-        return 0
+        if not pyproject_files:
+            return 0
+        project_def = PyProjectDefinition(pyproject_path=pyproject_files[0])
+        base_path = str(Path(pyproject_files[0]).parent) + "/"
     else:
-        project_def = SetupCfgDefinition()
-
-    setup_cfg = ConfigParser()
-    setup_cfg.read("setup.cfg")
+        if not setup_cfg_files:
+            return 0
+        project_def = SetupCfgDefinition(setup_cfg_path=setup_cfg_files[0])
+        base_path = str(Path(setup_cfg_files[0]).parent) + "/"
 
     # get the base requirements
     base_deps = project_def.get_base_requirements()
@@ -192,7 +216,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for extra in extras:
         # get the requirements for each extra
         extra_deps = project_def.get_extra_requirements(extra)
-        lock_file = get_lock_file_from_extra(extra)
+        lock_file = get_lock_file_from_extra(extra, base_path=base_path)
         parsed_lock_file = parse_requirements_from_lockfile(lock_file)
         try:
             validate_requirements(parsed_lock_file, base_deps)
