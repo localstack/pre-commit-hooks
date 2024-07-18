@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 
 import argparse
-import functools
 import fnmatch
+import functools
 from configparser import ConfigParser
+from pathlib import Path
 from typing import Sequence
 
 import toml
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
-from pathlib import Path
 
 PYPROJECT_PATTERN = "**/pyproject.toml"
 SETUP_CFG_PATTERN = "**/setup.cfg"
@@ -128,7 +128,9 @@ def get_cfg_extras(cfg: ConfigParser) -> Sequence[str]:
 
 
 def validate_requirements(
-    lock_file_reqs: dict[str, Requirement], cfg_reqs: dict[str, Requirement]
+    lock_file_reqs: dict[str, Requirement],
+    cfg_reqs: dict[str, Requirement],
+    base_path: str = ".",
 ):
     # the packages which should not be locked
     unsafe_packages = get_unsafe_packages()
@@ -142,7 +144,7 @@ def validate_requirements(
                 # if it is not for the current environment, ignore it
                 continue
         if req_name not in lock_file_reqs:
-            raise InvalidRequirement(f"{req} is missing from lock file")
+            raise InvalidRequirement(f"{req} is missing from lock file in {base_path}")
         # requirements can have multiple specifiers (e.g. >=1.0, <2.0) but lock files
         # only have one specifier (e.g. ==1.0). So we take the first (and only)
         # specifier from the lock file and extract the version defined in it.
@@ -153,7 +155,7 @@ def validate_requirements(
         # We need to allow pre-releases because of aws_cdk alpha dependencies.
         if not valid_range.contains(actual_version, prereleases=True):
             raise InvalidRequirement(
-                f"{lock_file_reqs[req_name]} does not fulfil {req}"
+                f"{lock_file_reqs[req_name]} does not fulfil {req} in {base_path}"
             )
 
 
@@ -183,55 +185,56 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("filenames", nargs="*", help="Filenames to check.")
     args = parser.parse_args(argv)
 
-    setup_cfg_files = [
+    changed_setup_cfg_files = [
         file
         for file in args.filenames
         if fnmatch.fnmatch(file, SETUP_CFG_PATTERN) or file == "setup.cfg"
     ]
-    pyproject_files = [
+    changed_pyproject_files = [
         file
         for file in args.filenames
         if fnmatch.fnmatch(file, PYPROJECT_PATTERN) or file == "pyproject.toml"
     ]
 
-    if not setup_cfg_files and not pyproject_files:
+    if not changed_setup_cfg_files and not changed_pyproject_files:
         # No changes in any files that can define dependencies
         return 0
 
-    # get pyproject file irrespective of it being changed
-    pyproject = toml.load(next(Path().glob(PYPROJECT_PATTERN)))
+    # go through all pyproject definitions
+    # the assumption is that all project have a pyproject file
+    # even if they don't use it for dependency definitions
+    for pyproject_file in Path().glob(PYPROJECT_PATTERN):
+        pyproject = toml.load(pyproject_file)
+        base_path = str(pyproject_file.parent) + "/"
+        # check if dependencies are defined in pyproject or setup.cfg
+        if "project" in pyproject:
+            if str(pyproject_file) not in changed_pyproject_files:
+                continue
+            project_def = PyProjectDefinition(pyproject_path=str(pyproject_file))
+        else:
+            if base_path + "setup.cfg" not in changed_setup_cfg_files:
+                continue
+            project_def = SetupCfgDefinition(setup_cfg_path=base_path + "setup.cfg")
 
-    # check if dependencies are defined in pyproject or setup.cfg
-    if "project" in pyproject:
-        if not pyproject_files:
-            return 0
-        project_def = PyProjectDefinition(pyproject_path=pyproject_files[0])
-        base_path = str(Path(pyproject_files[0]).parent) + "/"
-    else:
-        if not setup_cfg_files:
-            return 0
-        project_def = SetupCfgDefinition(setup_cfg_path=setup_cfg_files[0])
-        base_path = str(Path(setup_cfg_files[0]).parent) + "/"
-
-    # get the base requirements
-    base_deps = project_def.get_base_requirements()
-    # get the list of extras
-    extras = project_def.get_defined_extras()
-    for extra in extras:
-        # get the requirements for each extra
-        extra_deps = project_def.get_extra_requirements(extra)
-        lock_file = get_lock_file_from_extra(extra, base_path=base_path)
-        parsed_lock_file = parse_requirements_from_lockfile(lock_file)
-        try:
-            validate_requirements(parsed_lock_file, base_deps)
-        except InvalidRequirement as e:
-            print_error_msg(e)
-            return 1
-        try:
-            validate_requirements(parsed_lock_file, extra_deps)
-        except InvalidRequirement as e:
-            print_error_msg(e, extra)
-            return 1
+        # get the base requirements
+        base_deps = project_def.get_base_requirements()
+        # get the list of extras
+        extras = project_def.get_defined_extras()
+        for extra in extras:
+            # get the requirements for each extra
+            extra_deps = project_def.get_extra_requirements(extra)
+            lock_file = get_lock_file_from_extra(extra, base_path=base_path)
+            parsed_lock_file = parse_requirements_from_lockfile(lock_file)
+            try:
+                validate_requirements(parsed_lock_file, base_deps, base_path=base_path)
+            except InvalidRequirement as e:
+                print_error_msg(e)
+                return 1
+            try:
+                validate_requirements(parsed_lock_file, extra_deps, base_path=base_path)
+            except InvalidRequirement as e:
+                print_error_msg(e, extra)
+                return 1
 
     return 0
 
