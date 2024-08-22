@@ -17,7 +17,7 @@ Then, to use hooks from this repo add this to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/localstack/pre-commit-hooks
-    rev: v1.1.0
+    rev: v1.2.1
     hooks:
       - id: check-pinned-deps-for-needed-upgrade
 ```
