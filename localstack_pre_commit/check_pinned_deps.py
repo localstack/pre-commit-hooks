@@ -113,8 +113,8 @@ def get_lock_file_from_extra(extra: str, base_path: str = "") -> str:
 
 
 @functools.cache
-def get_unsafe_packages() -> list[str]:
-    pyproject_toml = toml.load(next(Path().glob(PYPROJECT_PATTERN)))
+def get_unsafe_packages(pyproject_toml_path: Path) -> list[str]:
+    pyproject_toml = toml.load(pyproject_toml_path)
     pip_tools = pyproject_toml.get("tool", {}).get("pip-tools", {})
     if "unsafe-package" in pip_tools:
         return pip_tools["unsafe-package"]
@@ -132,8 +132,8 @@ def validate_requirements(
     cfg_reqs: dict[str, Requirement],
     base_path: str = ".",
 ):
-    # the packages which should not be locked
-    unsafe_packages = get_unsafe_packages()
+    # the packages which should not be locked for the current environment
+    unsafe_packages = get_unsafe_packages(Path(base_path) / "pyproject.toml")
     for req_name, req in cfg_reqs.items():
         if req_name in unsafe_packages:
             # ignore non-locked packages
